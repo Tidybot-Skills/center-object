@@ -1,0 +1,2 @@
+# No external dependencies
+# Uses robot-provided APIs: camera, yolo, base
