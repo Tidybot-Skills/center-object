@@ -36,8 +36,6 @@ def center_object(
     CENTER_U, CENTER_V = 320, 240
     MAX_STEP = 0.04
     DAMPING = 0.5
-    SEARCH_ANGLE = math.radians(20)  # 20 degrees
-    
     def log(msg):
         if verbose:
             print(msg)
@@ -50,26 +48,52 @@ def center_object(
         return None
     
     def search_rotate():
-        """Rotate base ±20° to search for object"""
-        log(f"[center] Searching: rotating +20°...")
-        base.move_delta(dtheta=SEARCH_ANGLE)
+        """Rotate base ±30° then ±60° to search for object"""
+        # Try ±30° first
+        angle_30 = math.radians(30)
+        
+        log(f"[center] Searching: rotating +30°...")
+        base.move_delta(dtheta=angle_30)
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at +20°")
+            log(f"[center] Found at +30°")
             return det
         
-        log(f"[center] Searching: rotating -40° (to -20°)...")
-        base.move_delta(dtheta=-2*SEARCH_ANGLE)
+        log(f"[center] Searching: rotating -60° (to -30°)...")
+        base.move_delta(dtheta=-2*angle_30)
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at -20°")
+            log(f"[center] Found at -30°")
+            return det
+        
+        # Return to center before trying ±60°
+        base.move_delta(dtheta=angle_30)
+        time.sleep(0.2)
+        
+        # Try ±60°
+        angle_60 = math.radians(60)
+        
+        log(f"[center] Searching: rotating +60°...")
+        base.move_delta(dtheta=angle_60)
+        time.sleep(0.3)
+        det = detect_target()
+        if det:
+            log(f"[center] Found at +60°")
+            return det
+        
+        log(f"[center] Searching: rotating -120° (to -60°)...")
+        base.move_delta(dtheta=-2*angle_60)
+        time.sleep(0.3)
+        det = detect_target()
+        if det:
+            log(f"[center] Found at -60°")
             return det
         
         # Return to center
-        log(f"[center] Not found, returning to center...")
-        base.move_delta(dtheta=SEARCH_ANGLE)
+        log(f"[center] Not found after ±30° and ±60° search")
+        base.move_delta(dtheta=angle_60)
         time.sleep(0.3)
         return None
     
