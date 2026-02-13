@@ -12,8 +12,8 @@ import time
 def center_object(
     target="banana",
     tolerance=30,
-    max_iterations=20,
-    gain=0.0015,
+    max_iterations=30,
+    gain=0.00225,
     camera_id="309622300814",
     verbose=True
 ):
@@ -72,9 +72,23 @@ def center_object(
             
             time.sleep(0.3)
             det = detect_target()
+            
+            # Wiggle recovery if lost detection
             if det is None:
-                log(f"[center] Lost detection during rotational centering")
-                return None
+                log(f"[center] Lost detection, wiggling to recover...")
+                wiggle_step = 0.02
+                for w in range(4):
+                    dx = wiggle_step * (1 if w % 2 == 0 else -1)
+                    dy = wiggle_step * (1 if (w // 2) % 2 == 0 else -1)
+                    base.move_delta(dx=dx, dy=dy)
+                    time.sleep(0.3)
+                    det = detect_target()
+                    if det:
+                        log(f"[center] Recovered detection after wiggle")
+                        break
+                if det is None:
+                    log(f"[center] Lost detection during rotational centering")
+                    return None
         
         log(f"[center] Rotational centering done (max steps)")
         return det
