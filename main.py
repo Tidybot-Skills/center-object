@@ -47,9 +47,40 @@ def center_object(
                 return det
         return None
     
+    def rotational_center(det):
+        """After finding object, rotate more to center it horizontally (U axis)"""
+        U_TOLERANCE = 80  # pixels from center
+        FINE_ANGLE = math.radians(10)  # 10° fine rotation steps
+        MAX_FINE_ROTATIONS = 6
+        
+        for i in range(MAX_FINE_ROTATIONS):
+            x1, y1, x2, y2 = det.bbox
+            u = (x1 + x2) / 2
+            u_err = u - CENTER_U
+            
+            if abs(u_err) < U_TOLERANCE:
+                log(f"[center] Rotationally centered (u_err={u_err:.0f})")
+                return det
+            
+            # Rotate towards center
+            if u_err > 0:  # Object is right of center, rotate left (negative)
+                log(f"[center] Object right of center (u_err={u_err:.0f}), rotating -10°")
+                base.move_delta(dtheta=-FINE_ANGLE)
+            else:  # Object is left of center, rotate right (positive)
+                log(f"[center] Object left of center (u_err={u_err:.0f}), rotating +10°")
+                base.move_delta(dtheta=FINE_ANGLE)
+            
+            time.sleep(0.3)
+            det = detect_target()
+            if det is None:
+                log(f"[center] Lost detection during rotational centering")
+                return None
+        
+        log(f"[center] Rotational centering done (max steps)")
+        return det
+    
     def search_rotate():
-        """Rotate base ±30° then ±60° to search for object"""
-        # Try ±30° first
+        """Rotate base ±30° then ±60° to search for object, then rotationally center"""
         angle_30 = math.radians(30)
         
         log(f"[center] Searching: rotating +30°...")
@@ -57,22 +88,20 @@ def center_object(
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at +30°")
-            return det
+            log(f"[center] Found at +30°, centering rotationally...")
+            return rotational_center(det)
         
         log(f"[center] Searching: rotating -60° (to -30°)...")
         base.move_delta(dtheta=-2*angle_30)
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at -30°")
-            return det
+            log(f"[center] Found at -30°, centering rotationally...")
+            return rotational_center(det)
         
-        # Return to center before trying ±60°
         base.move_delta(dtheta=angle_30)
         time.sleep(0.2)
         
-        # Try ±60°
         angle_60 = math.radians(60)
         
         log(f"[center] Searching: rotating +60°...")
@@ -80,18 +109,17 @@ def center_object(
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at +60°")
-            return det
+            log(f"[center] Found at +60°, centering rotationally...")
+            return rotational_center(det)
         
         log(f"[center] Searching: rotating -120° (to -60°)...")
         base.move_delta(dtheta=-2*angle_60)
         time.sleep(0.3)
         det = detect_target()
         if det:
-            log(f"[center] Found at -60°")
-            return det
+            log(f"[center] Found at -60°, centering rotationally...")
+            return rotational_center(det)
         
-        # Return to center
         log(f"[center] Not found after ±30° and ±60° search")
         base.move_delta(dtheta=angle_60)
         time.sleep(0.3)
