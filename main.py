@@ -1,8 +1,11 @@
 """
 center-object skill
 Centers a detected object in the wrist camera view by moving the robot base.
+Includes rotation search (±20°) when object is not initially visible.
 """
 
+from robot_sdk import base, yolo
+import math
 import time
 
 
@@ -30,29 +33,67 @@ def center_object(
         - (True, (u, v)) if object centered at pixel position
         - (False, None) if failed
     """
-    # Image center (assuming 640x480)
     CENTER_U, CENTER_V = 320, 240
-    
-    # Movement limits
-    MAX_STEP = 0.04  # meters
-    DAMPING = 0.5    # reduce oscillation
+    MAX_STEP = 0.04
+    DAMPING = 0.5
+    SEARCH_ANGLE = math.radians(20)  # 20 degrees
     
     def log(msg):
         if verbose:
             print(msg)
     
+    def detect_target():
+        result = yolo.segment_camera(target, camera_id=camera_id, confidence=0.15)
+        for det in result.detections:
+            if det.class_name.lower() == target.lower():
+                return det
+        return None
+    
+    def search_rotate():
+        """Rotate base ±20° to search for object"""
+        log(f"[center] Searching: rotating +20°...")
+        base.move_delta(dtheta=SEARCH_ANGLE)
+        time.sleep(0.3)
+        det = detect_target()
+        if det:
+            log(f"[center] Found at +20°")
+            return det
+        
+        log(f"[center] Searching: rotating -40° (to -20°)...")
+        base.move_delta(dtheta=-2*SEARCH_ANGLE)
+        time.sleep(0.3)
+        det = detect_target()
+        if det:
+            log(f"[center] Found at -20°")
+            return det
+        
+        # Return to center
+        log(f"[center] Not found, returning to center...")
+        base.move_delta(dtheta=SEARCH_ANGLE)
+        time.sleep(0.3)
+        return None
+    
     log(f"[center] Starting centering for '{target}'")
     log(f"[center] Tolerance: {tolerance}px, Max iter: {max_iterations}")
     
+    # Initial detection
+    target_det = detect_target()
+    
+    # If not found, do rotation search
+    if target_det is None:
+        log(f"[center] Object not visible, starting rotation search...")
+        target_det = search_rotate()
+        if target_det is None:
+            log(f"[center] FAILED - Object not found after search")
+            return False, None
+    
     for iteration in range(max_iterations):
-        # Capture and detect
-        img = camera.capture_image(camera_id)
-        detections = yolo.detect(img)
+        result = yolo.segment_camera(target, camera_id=camera_id, confidence=0.15)
+        detections = result.detections
         
-        # Find target
         target_det = None
         for det in detections:
-            if det["label"].lower() == target.lower():
+            if det.class_name.lower() == target.lower():
                 target_det = det
                 break
         
@@ -61,41 +102,30 @@ def center_object(
             time.sleep(0.3)
             continue
         
-        # Get bounding box center
-        x1, y1, x2, y2 = target_det["box"]
+        # Get bbox center
+        x1, y1, x2, y2 = target_det.bbox
         u = (x1 + x2) / 2
         v = (y1 + y2) / 2
-        conf = target_det.get("confidence", 0)
+        conf = target_det.confidence
         
-        # Calculate error from image center
-        u_err = u - CENTER_U  # positive = object right of center
-        v_err = v - CENTER_V  # positive = object below center
+        u_err = u - CENTER_U
+        v_err = v - CENTER_V
         
         log(f"[center] Iter {iteration}: pos=({u:.0f}, {v:.0f}), err=({u_err:.0f}, {v_err:.0f}), conf={conf:.2f}")
         
-        # Check if centered
         if abs(u_err) < tolerance and abs(v_err) < tolerance:
             log(f"[center] SUCCESS - Object centered at ({u:.0f}, {v:.0f})")
             return True, (u, v)
         
-        # Calculate base movement
-        # Camera looks down: 
-        #   - V error (vertical in image) -> X movement (forward/back)
-        #   - U error (horizontal in image) -> Y movement (left/right)
-        # Signs: negative v_err (above center) means object is close, move back (negative dx)
-        #        positive u_err (right of center) means move left (positive dy)
-        
         dx = -gain * v_err * DAMPING
         dy = -gain * u_err * DAMPING
         
-        # Clamp to max step
         dx = max(-MAX_STEP, min(MAX_STEP, dx))
         dy = max(-MAX_STEP, min(MAX_STEP, dy))
         
         log(f"[center] Moving base: dx={dx:.4f}m, dy={dy:.4f}m")
         
-        # Execute base movement
-        base.move_relative(dx=dx, dy=dy, dtheta=0)
+        base.move_delta(dx=dx, dy=dy)
         time.sleep(0.3)
     
     log(f"[center] FAILED - Max iterations ({max_iterations}) reached")
