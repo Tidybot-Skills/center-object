@@ -12,7 +12,7 @@ import time
 def center_object(
     target="banana",
     tolerance=30,
-    max_iterations=30,
+    max_iterations=50,
     gain=0.00225,
     camera_id="309622300814",
     verbose=True
